@@ -13,7 +13,8 @@ import {
   Calendar, 
   Hash,
   GraduationCap,
-  XCircle
+  XCircle,
+  Trophy
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
 
@@ -278,15 +279,23 @@ export const ResultsEvaluationView: React.FC<ResultsEvaluationViewProps> = ({
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <button
           onClick={handlePrint}
-          className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm flex items-center gap-2 transition-all hover:scale-102"
+          className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm flex items-center gap-2 transition-all hover:scale-102 cursor-pointer"
         >
           <Printer className="w-4 h-4" />
           <span>In / Lưu Giấy Chứng Nhận (PDF)</span>
         </button>
 
         <button
+          onClick={() => onNavigateGame('class_leaderboard')}
+          className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-md shadow-amber-200 flex items-center gap-2 transition-all hover:scale-102 cursor-pointer"
+        >
+          <Trophy className="w-4 h-4 text-yellow-100" />
+          <span>Bảng Thi Đua Học Tập & Bục Vinh Quang</span>
+        </button>
+
+        <button
           onClick={() => onNavigateGame('student_entry')}
-          className="px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center gap-2 transition-all"
+          className="px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
         >
           <User className="w-4 h-4" />
           <span>Đổi Thông Tin Học Viên</span>

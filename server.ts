@@ -1,19 +1,172 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
-// Initialize Gemini SDK with User-Agent header as required
+// Ensure data directory exists
+const DATA_DIR = path.join(process.cwd(), "data");
+const SUBMISSIONS_FILE = path.join(DATA_DIR, "submissions.json");
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+interface StoredSubmission {
+  id: string;
+  studentId: string;
+  fullName: string;
+  schoolOrOrg: string;
+  avatar: string;
+  scores: {
+    game1: number;
+    game2: number;
+    game3: number;
+    game4: number;
+    totalScore: number;
+  };
+  completionStatus: {
+    game1Completed: boolean;
+    game2Completed: boolean;
+    game3Completed: boolean;
+    game4Completed: boolean;
+    completedGamesCount: number;
+    percentage: number;
+  };
+  tier: "Đạt" | "Chưa đạt" | "Đang thực hiện";
+  startedAt: string;
+  updatedAt: string;
+}
+
+// Initial sample submissions representing a realistic class
+const INITIAL_SUBMISSIONS: StoredSubmission[] = [
+  {
+    id: "sub_1",
+    studentId: "HV-1024",
+    fullName: "TS. Nguyễn Hoàng Nam",
+    schoolOrOrg: "Đại học Sư phạm Hà Nội",
+    avatar: "👨‍🏫",
+    scores: { game1: 25, game2: 25, game3: 25, game4: 25, totalScore: 100 },
+    completionStatus: {
+      game1Completed: true,
+      game2Completed: true,
+      game3Completed: true,
+      game4Completed: true,
+      completedGamesCount: 4,
+      percentage: 100,
+    },
+    tier: "Đạt",
+    startedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000 * 1.8).toISOString(),
+  },
+  {
+    id: "sub_2",
+    studentId: "HV-2088",
+    fullName: "ThS. Lê Thị Bích Ngọc",
+    schoolOrOrg: "THPT Chuyên Lê Hồng Phong TP.HCM",
+    avatar: "👩‍🏫",
+    scores: { game1: 25, game2: 20, game3: 25, game4: 25, totalScore: 95 },
+    completionStatus: {
+      game1Completed: true,
+      game2Completed: true,
+      game3Completed: true,
+      game4Completed: true,
+      completedGamesCount: 4,
+      percentage: 100,
+    },
+    tier: "Đạt",
+    startedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000 * 2.5).toISOString(),
+  },
+  {
+    id: "sub_3",
+    studentId: "HV-3312",
+    fullName: "Thầy Trần Đình Khải",
+    schoolOrOrg: "THPT Chuyên Hà Nội - Amsterdam",
+    avatar: "💡",
+    scores: { game1: 20, game2: 25, game3: 20, game4: 20, totalScore: 85 },
+    completionStatus: {
+      game1Completed: true,
+      game2Completed: true,
+      game3Completed: true,
+      game4Completed: true,
+      completedGamesCount: 4,
+      percentage: 100,
+    },
+    tier: "Đạt",
+    startedAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000 * 1.2).toISOString(),
+  },
+  {
+    id: "sub_4",
+    studentId: "HV-4490",
+    fullName: "Cô Phạm Thu Hà",
+    schoolOrOrg: "Đại học Giáo dục - ĐHQGHN",
+    avatar: "🎓",
+    scores: { game1: 25, game2: 15, game3: 20, game4: 15, totalScore: 75 },
+    completionStatus: {
+      game1Completed: true,
+      game2Completed: true,
+      game3Completed: true,
+      game4Completed: true,
+      completedGamesCount: 4,
+      percentage: 100,
+    },
+    tier: "Đạt",
+    startedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000 * 3.7).toISOString(),
+  },
+  {
+    id: "sub_5",
+    studentId: "HV-5120",
+    fullName: "Thầy Vũ Minh Tuấn",
+    schoolOrOrg: "THCS & THPT Nguyễn Tất Thành",
+    avatar: "🚀",
+    scores: { game1: 20, game2: 20, game3: 0, game4: 0, totalScore: 40 },
+    completionStatus: {
+      game1Completed: true,
+      game2Completed: true,
+      game3Completed: false,
+      game4Completed: false,
+      completedGamesCount: 2,
+      percentage: 50,
+    },
+    tier: "Đang thực hiện",
+    startedAt: new Date(Date.now() - 1800000).toISOString(),
+    updatedAt: new Date(Date.now() - 600000).toISOString(),
+  },
+];
+
+function loadSubmissions(): StoredSubmission[] {
+  try {
+    if (!fs.existsSync(SUBMISSIONS_FILE)) {
+      fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(INITIAL_SUBMISSIONS, null, 2), "utf8");
+      return INITIAL_SUBMISSIONS;
+    }
+    const raw = fs.readFileSync(SUBMISSIONS_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Error reading submissions:", err);
+    return INITIAL_SUBMISSIONS;
+  }
+}
+
+function saveSubmissions(data: StoredSubmission[]) {
+  try {
+    fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(data, null, 2), "utf8");
+  } catch (err) {
+    console.error("Error saving submissions:", err);
+  }
+}
+
+// Initialize Gemini SDK
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY is not set. Gemini features will return fallback/mock data if requested.");
-    }
     aiClient = new GoogleGenAI({
       apiKey: apiKey || "dummy-key",
       httpOptions: {
@@ -32,12 +185,160 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Routes
+  // API Health
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Endpoint 1: Generate dynamic custom quiz questions
+  // SUBMISSIONS API (Centralized Class Tracking & GitHub Sync)
+  app.get("/api/submissions", (req, res) => {
+    const list = loadSubmissions();
+    // Sort by total score descending, then updated timestamp
+    list.sort((a, b) => {
+      if (b.scores.totalScore !== a.scores.totalScore) {
+        return b.scores.totalScore - a.scores.totalScore;
+      }
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+    res.json({ success: true, count: list.length, data: list });
+  });
+
+  app.post("/api/submissions", (req, res) => {
+    try {
+      const { studentId, fullName, schoolOrOrg, avatar, scores, completionStatus } = req.body;
+      if (!fullName) {
+        return res.status(400).json({ success: false, error: "Họ và tên học viên là bắt buộc." });
+      }
+
+      const list = loadSubmissions();
+      const sId = studentId || `HV-${fullName.trim().replace(/\s+/g, "").toLowerCase()}`;
+      
+      const totalScore = (scores?.game1 || 0) + (scores?.game2 || 0) + (scores?.game3 || 0) + (scores?.game4 || 0);
+      const isAllDone = 
+        completionStatus?.game1Completed && 
+        completionStatus?.game2Completed && 
+        completionStatus?.game3Completed && 
+        completionStatus?.game4Completed;
+
+      let tier: "Đạt" | "Chưa đạt" | "Đang thực hiện" = "Đang thực hiện";
+      if (isAllDone || completionStatus?.completedGamesCount === 4) {
+        tier = totalScore >= 50 ? "Đạt" : "Chưa đạt";
+      } else if (totalScore >= 50) {
+        tier = "Đạt";
+      }
+
+      const existingIndex = list.findIndex(
+        (item) => item.studentId === sId || (item.fullName.toLowerCase() === fullName.trim().toLowerCase() && item.schoolOrOrg === schoolOrOrg)
+      );
+
+      const submissionRecord: StoredSubmission = {
+        id: existingIndex >= 0 ? list[existingIndex].id : `sub_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        studentId: sId,
+        fullName: fullName.trim(),
+        schoolOrOrg: schoolOrOrg?.trim() || "Đơn vị giáo dục",
+        avatar: avatar || "👨‍🏫",
+        scores: {
+          game1: Number(scores?.game1) || 0,
+          game2: Number(scores?.game2) || 0,
+          game3: Number(scores?.game3) || 0,
+          game4: Number(scores?.game4) || 0,
+          totalScore,
+        },
+        completionStatus: {
+          game1Completed: Boolean(completionStatus?.game1Completed),
+          game2Completed: Boolean(completionStatus?.game2Completed),
+          game3Completed: Boolean(completionStatus?.game3Completed),
+          game4Completed: Boolean(completionStatus?.game4Completed),
+          completedGamesCount: Number(completionStatus?.completedGamesCount) || 0,
+          percentage: Number(completionStatus?.percentage) || 0,
+        },
+        tier,
+        startedAt: existingIndex >= 0 ? list[existingIndex].startedAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (existingIndex >= 0) {
+        list[existingIndex] = submissionRecord;
+      } else {
+        list.unshift(submissionRecord);
+      }
+
+      saveSubmissions(list);
+      return res.json({ success: true, data: submissionRecord });
+    } catch (err: any) {
+      console.error("Save submission error:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Aggregated Statistics Endpoint
+  app.get("/api/submissions/stats", (req, res) => {
+    const list = loadSubmissions();
+    const total = list.length;
+    if (total === 0) {
+      return res.json({
+        totalStudents: 0,
+        completedStudents: 0,
+        passedStudents: 0,
+        failedStudents: 0,
+        passRate: 0,
+        averageTotalScore: 0,
+        averageGame1: 0,
+        averageGame2: 0,
+        averageGame3: 0,
+        averageGame4: 0,
+      });
+    }
+
+    const completed = list.filter((s) => s.completionStatus.completedGamesCount === 4 || s.tier !== "Đang thực hiện");
+    const passed = list.filter((s) => s.scores.totalScore >= 50);
+    const failed = list.filter((s) => s.completionStatus.completedGamesCount === 4 && s.scores.totalScore < 50);
+
+    const sumTotal = list.reduce((acc, s) => acc + s.scores.totalScore, 0);
+    const sumG1 = list.reduce((acc, s) => acc + s.scores.game1, 0);
+    const sumG2 = list.reduce((acc, s) => acc + s.scores.game2, 0);
+    const sumG3 = list.reduce((acc, s) => acc + s.scores.game3, 0);
+    const sumG4 = list.reduce((acc, s) => acc + s.scores.game4, 0);
+
+    return res.json({
+      totalStudents: total,
+      completedStudents: completed.length,
+      passedStudents: passed.length,
+      failedStudents: failed.length,
+      passRate: Math.round((passed.length / total) * 100),
+      averageTotalScore: Math.round((sumTotal / total) * 10) / 10,
+      averageGame1: Math.round((sumG1 / total) * 10) / 10,
+      averageGame2: Math.round((sumG2 / total) * 10) / 10,
+      averageGame3: Math.round((sumG3 / total) * 10) / 10,
+      averageGame4: Math.round((sumG4 / total) * 10) / 10,
+    });
+  });
+
+  // Export Data for GitHub Repository Endpoint
+  app.get("/api/submissions/export/github", (req, res) => {
+    const list = loadSubmissions();
+    list.sort((a, b) => b.scores.totalScore - a.scores.totalScore);
+
+    let md = `# 📊 KẾT QUẢ KHẢO THÍ BUỔI 4: SỬ DỤNG AI TRONG KIỂM TRA ĐÁNH GIÁ\n\n`;
+    md += `> Thời gian xuất dữ liệu: ${new Date().toLocaleString("vi-VN")}\n`;
+    md += `> Tổng số học viên đã ghi nhận: **${list.length}**\n\n`;
+    md += `| Hạng | Họ và Tên | Đơn vị / Trường học | SBD | Trò 1 (25đ) | Trò 2 (25đ) | Trò 3 (25đ) | Trò 4 (25đ) | Tổng Điểm (100đ) | Tiến độ | Xếp Loại |\n`;
+    md += `| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n`;
+
+    list.forEach((s, idx) => {
+      const medal = idx === 0 ? "🥇 " : idx === 1 ? "🥈 " : idx === 2 ? "🥉 " : `${idx + 1}`;
+      const tierBadge = s.tier === "Đạt" ? "**ĐẠT**" : s.tier === "Chưa đạt" ? "Chưa đạt" : "Đang làm";
+      md += `| ${medal} | ${s.avatar} ${s.fullName} | ${s.schoolOrOrg} | ${s.studentId} | ${s.scores.game1} | ${s.scores.game2} | ${s.scores.game3} | ${s.scores.game4} | **${s.scores.totalScore}** | ${s.completionStatus.percentage}% | ${tierBadge} |\n`;
+    });
+
+    res.json({
+      markdown: md,
+      jsonData: list,
+      fileName: `github_ai_assessment_buoi4_${Date.now()}.json`,
+    });
+  });
+
+  // Gemini Endpoints
   app.post("/api/gemini/generate-custom-quiz", async (req, res) => {
     try {
       const { subject = "Toán & KHTN", difficulty = "Nâng cao (Phân tích / Đánh giá)" } = req.body;
@@ -47,24 +348,24 @@ async function startServer() {
 Hãy tạo 1 câu hỏi/thử thách trắc nghiệm TÌNH HUỐNG NÂNG CAO bằng Tiếng Việt về việc "Ứng dụng AI trong Kiểm tra & Đánh giá" cho môn: ${subject}, cấp độ: ${difficulty}.
 Chủ đề liên quan đến: Phân hóa người học, Chống gian lận/sử dụng AI vô tội vạ, Thiết kế đề thi tích hợp AI, Đánh giá quá trình (Formative Assessment), Ma trận Rubric đa chiều, hoặc Phát hiện Ảo giác (Hallucination) / Thiên kiến (Bias) của AI.
 
-Hãy trả về DUY NHẤT một JSON object có cấu trúc chính xác sau (không kèm markdown \`\`\`json):
+Hãy trả về DUY NHẤT một JSON object:
 {
   "id": "ai_gen_${Date.now()}",
   "topic": "${subject}",
   "type": "scenario",
   "difficulty": "${difficulty}",
   "title": "Tên tình huống ngắn gọn",
-  "scenario": "Mô tả bối cảnh sư phạm chi tiết và thực tế (ví dụ: Thầy Nam muốn dùng ChatGPT để tạo 20 câu hỏi trắc nghiệm kèm ma trận nhận thức...)",
-  "question": "Câu hỏi khảo nghiệm sâu sắc đặt ra cho giáo viên / chuyên gia khảo thí?",
+  "scenario": "Mô tả bối cảnh sư phạm chi tiết",
+  "question": "Câu hỏi khảo nghiệm sâu sắc?",
   "options": [
-    { "id": "A", "text": "Lựa chọn A...", "isCorrect": false, "rationale": "Giải thích tại sao chưa tối ưu..." },
-    { "id": "B", "text": "Lựa chọn B...", "isCorrect": true, "rationale": "Giải thích chi tiết sư phạm tại sao đây là giải pháp chuẩn mực..." },
-    { "id": "C", "text": "Lựa chọn C...", "isCorrect": false, "rationale": "Giải thích tại sao..." },
-    { "id": "D", "text": "Lựa chọn D...", "isCorrect": false, "rationale": "Giải thích tại sao..." }
+    { "id": "A", "text": "Lựa chọn A...", "isCorrect": false, "rationale": "Giải thích..." },
+    { "id": "B", "text": "Lựa chọn B...", "isCorrect": true, "rationale": "Giải thích..." },
+    { "id": "C", "text": "Lựa chọn C...", "isCorrect": false, "rationale": "Giải thích..." },
+    { "id": "D", "text": "Lựa chọn D...", "isCorrect": false, "rationale": "Giải thích..." }
   ],
-  "pedagogicalInsight": "Bài học cốt lõi & nguyên lý sư phạm cần ghi nhớ (2-3 câu đúc kết sâu sắc)",
-  "bloomLevel": "Đánh giá (Evaluate) / Sáng tạo (Create)",
-  "proTip": "Mẹo ứng dụng thực chiến trong giảng dạy và khảo thí"
+  "pedagogicalInsight": "Bài học cốt lõi",
+  "bloomLevel": "Đánh giá / Sáng tạo",
+  "proTip": "Mẹo thực chiến"
 }`;
 
       const response = await ai.models.generateContent({
@@ -80,91 +381,7 @@ Hãy trả về DUY NHẤT một JSON object có cấu trúc chính xác sau (kh
       return res.json({ success: true, data: parsedData });
     } catch (err: any) {
       console.error("Gemini quiz generation error:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Failed to generate AI quiz",
-      });
-    }
-  });
-
-  // Endpoint 2: Evaluate a Teacher's AI Prompt for Assessment
-  app.post("/api/gemini/evaluate-prompt", async (req, res) => {
-    try {
-      const { userPrompt, targetObjective = "Tạo đề thi tự luận đánh giá tư duy phản biện" } = req.body;
-      const ai = getAIClient();
-
-      const evalPrompt = `Bạn là chuyên gia Khảo thí và Kỹ thuật Đặt câu lệnh AI (Prompt Engineering for Assessment).
-Hãy đánh giá câu lệnh (Prompt) sau đây của một giáo viên khi dùng AI để thiết kế kiểm tra đánh giá:
-Mục tiêu khảo thí: ${targetObjective}
-Prompt của giáo viên: "${userPrompt}"
-
-Hãy phân tích và trả về DUY NHẤT một JSON object (không kèm markdown):
-{
-  "score": 85,
-  "verdict": "Khá tốt / Xuất sắc / Cần cải thiện",
-  "strengths": ["Điểm mạnh 1", "Điểm mạnh 2"],
-  "weaknesses": ["Điểm yếu hoặc rủi ro (vd: thiếu bối cảnh, dễ bị ảo giác, thiếu tiêu chí phân hóa)"],
-  "improvedPrompt": "Phiên bản Prompt nâng cấp chuẩn mực sư phạm (có role, context, rubric, constraints, zero-shot/few-shot)",
-  "pedagogicalAdvice": "Lời khuyên sư phạm khi ứng dụng Prompt này trong thực tế lớp học"
-}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: evalPrompt,
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
-
-      const responseText = response.text || "{}";
-      const parsed = JSON.parse(responseText.trim());
-      return res.json({ success: true, data: parsed });
-    } catch (err: any) {
-      console.error("Gemini prompt evaluation error:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Failed to evaluate prompt",
-      });
-    }
-  });
-
-  // Endpoint 3: AI Pedagogical Deep Explanation
-  app.post("/api/gemini/explain-question", async (req, res) => {
-    try {
-      const { questionTitle, questionDetails, userAnswer, correctAnswer } = req.body;
-      const ai = getAIClient();
-
-      const explainPrompt = `Là chuyên gia Đo lường giáo dục & AI EdTech, hãy giải thích chi tiết và phân tích sâu sắc câu hỏi sau đây:
-Câu hỏi: ${questionTitle}
-Nội dung: ${questionDetails}
-Người dùng chọn: ${userAnswer}
-Đáp án chuẩn: ${correctAnswer}
-
-Hãy trả về DUY NHẤT một JSON object:
-{
-  "summary": "Tóm tắt ngắn gọn bản chất vấn đề",
-  "whyCorrect": "Lý giải tường tận góc nhìn đo lường đánh giá hiện đại",
-  "commonMisconception": "Hiểu lầm phổ biến của giáo viên / người học khi làm dạng câu này",
-  "futureTrend": "Xu hướng kiểm tra đánh giá tương lai cùng AI trong giáo dục 4.0",
-  "actionableTakeaway": "1 hành động thực tế có thể áp dụng ngay ngày mai trong lớp học"
-}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: explainPrompt,
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
-
-      const parsed = JSON.parse((response.text || "{}").trim());
-      return res.json({ success: true, data: parsed });
-    } catch (err: any) {
-      console.error("Gemini explain error:", err);
-      return res.status(500).json({
-        success: false,
-        error: err.message || "Failed to explain",
-      });
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 

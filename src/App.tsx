@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ActiveView, StudentInfo, ScoreState } from './types';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
@@ -8,6 +8,8 @@ import { Game2TrueFalseView } from './components/Game2TrueFalseView';
 import { Game3DragDropView } from './components/Game3DragDropView';
 import { Game4SpeedBlitzView } from './components/Game4SpeedBlitzView';
 import { ResultsEvaluationView } from './components/ResultsEvaluationView';
+import { MyRankingView } from './components/MyRankingView';
+import { ClassLeaderboardView } from './components/ClassLeaderboardView';
 import { HandbookView } from './components/HandbookView';
 import { soundManager } from './utils/sound';
 
@@ -24,6 +26,51 @@ export default function App() {
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [scoreState, setScoreState] = useState<ScoreState>(INITIAL_SCORE_STATE);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted);
+
+  // Sync submission to central server whenever student or scoreState updates
+  useEffect(() => {
+    if (!student || !isLoggedIn) return;
+
+    const totalScore = 
+      scoreState.game1.score + 
+      scoreState.game2.score + 
+      scoreState.game3.score + 
+      scoreState.game4.score;
+
+    const completedCount = 
+      (scoreState.game1.isCompleted ? 1 : 0) +
+      (scoreState.game2.isCompleted ? 1 : 0) +
+      (scoreState.game3.isCompleted ? 1 : 0) +
+      (scoreState.game4.isCompleted ? 1 : 0);
+
+    const payload = {
+      studentId: student.studentId,
+      fullName: student.fullName,
+      schoolOrOrg: student.schoolOrOrg,
+      avatar: student.avatar,
+      scores: {
+        game1: scoreState.game1.score,
+        game2: scoreState.game2.score,
+        game3: scoreState.game3.score,
+        game4: scoreState.game4.score,
+        totalScore,
+      },
+      completionStatus: {
+        game1Completed: scoreState.game1.isCompleted,
+        game2Completed: scoreState.game2.isCompleted,
+        game3Completed: scoreState.game3.isCompleted,
+        game4Completed: scoreState.game4.isCompleted,
+        completedGamesCount: completedCount,
+        percentage: completedCount * 25,
+      },
+    };
+
+    fetch('/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err) => console.error('Sync submission error:', err));
+  }, [student, scoreState, isLoggedIn]);
 
   const handleLogin = (studentInfo: StudentInfo) => {
     setStudent(studentInfo);
@@ -176,6 +223,21 @@ export default function App() {
             student={student}
             scoreState={scoreState}
             onNavigateGame={(v) => setActiveView(v)}
+          />
+        )}
+
+        {activeView === 'my_ranking' && (
+          <MyRankingView
+            student={student}
+            scoreState={scoreState}
+            onNavigate={(v) => setActiveView(v)}
+          />
+        )}
+
+        {activeView === 'class_leaderboard' && (
+          <ClassLeaderboardView
+            currentStudent={student}
+            onNavigateToStudent={() => {}}
           />
         )}
 

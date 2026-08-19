@@ -13,7 +13,10 @@ import {
   RotateCcw,
   Sparkles,
   GraduationCap,
-  LogOut
+  LogOut,
+  Users,
+  Trophy,
+  Crown
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
 
@@ -96,6 +99,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       highlight: true
     },
     {
+      id: 'my_ranking' as ActiveView,
+      title: 'Bảng Xếp Hạng Của Tôi',
+      subtitle: 'Vị trí thi đua & Phân tích điểm',
+      icon: <Crown className="w-4 h-4 text-amber-500" />,
+      badge: 'Cá nhân ⭐',
+      badgeColor: 'bg-indigo-100 text-indigo-800 font-black'
+    },
+    {
+      id: 'class_leaderboard' as ActiveView,
+      title: 'Bảng Thi Đua Cả Lớp',
+      subtitle: 'Bục vinh quang & Kết quả toàn khóa',
+      icon: <Trophy className="w-4 h-4 text-amber-500" />,
+      badge: 'Cả lớp 🏆',
+      badgeColor: 'bg-amber-100 text-amber-900 border border-amber-200'
+    },
+    {
       id: 'handbook' as ActiveView,
       title: 'Cẩm Nang Khảo Thí AI',
       subtitle: 'Tra cứu chuẩn GDPT & UNESCO',
@@ -157,7 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
           <div className="flex justify-between items-center text-xs font-bold mb-1.5">
             <span className="text-slate-600 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Tổng Điểm Đạt Được:
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Điểm Của Bạn:
             </span>
             <span className="text-indigo-600 text-sm font-black">
               {totalScore} / 100 đ

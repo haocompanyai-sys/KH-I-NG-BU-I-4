@@ -5,6 +5,8 @@ export type ActiveView =
   | 'game3_dragdrop'
   | 'game4_speed'
   | 'results_evaluation'
+  | 'my_ranking'
+  | 'class_leaderboard'
   | 'handbook';
 
 export interface StudentInfo {
@@ -40,6 +42,45 @@ export interface ScoreState {
     answers: Record<string, string>;
     isCompleted: boolean;
   };
+}
+
+export interface StudentSubmission {
+  id: string;
+  studentId: string;
+  fullName: string;
+  schoolOrOrg: string;
+  avatar: string;
+  scores: {
+    game1: number;
+    game2: number;
+    game3: number;
+    game4: number;
+    totalScore: number;
+  };
+  completionStatus: {
+    game1Completed: boolean;
+    game2Completed: boolean;
+    game3Completed: boolean;
+    game4Completed: boolean;
+    completedGamesCount: number;
+    percentage: number;
+  };
+  tier: 'Đạt' | 'Chưa đạt' | 'Đang thực hiện';
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface LeaderboardStats {
+  totalStudents: number;
+  completedStudents: number;
+  passedStudents: number;
+  failedStudents: number;
+  passRate: number;
+  averageTotalScore: number;
+  averageGame1: number;
+  averageGame2: number;
+  averageGame3: number;
+  averageGame4: number;
 }
 
 export interface MCQQuestion {
