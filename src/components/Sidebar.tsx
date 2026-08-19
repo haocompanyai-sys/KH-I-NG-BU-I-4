@@ -31,6 +31,8 @@ interface SidebarProps {
   onToggleMute: () => void;
   onResetAll: () => void;
   onUpdateStudentInfo?: (info: Partial<StudentInfo>) => void;
+  isRegistered?: boolean;
+  isAdmin?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,11 +44,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleMute,
   onResetAll,
   onUpdateStudentInfo,
+  isRegistered = false,
+  isAdmin = false,
 }) => {
   const [showEditNameModal, setShowEditNameModal] = useState<boolean>(false);
   const [editFullName, setEditFullName] = useState<string>(student?.fullName || '');
   const [editSchool, setEditSchool] = useState<string>(student?.schoolOrOrg || '');
   const [editStudentId, setEditStudentId] = useState<string>(student?.studentId || '');
+  const [lockWarning, setLockWarning] = useState<string | null>(null);
 
   const totalScore = 
     scoreState.game1.score + 
@@ -56,54 +61,81 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const isPassed = totalScore >= 50;
 
+  // Sequential progression rules
+  const isGame1Unlocked = isAdmin || isRegistered;
+  const isGame2Unlocked = isAdmin || (isRegistered && scoreState.game1.isCompleted);
+  const isGame3Unlocked = isAdmin || (isRegistered && scoreState.game2.isCompleted);
+  const isGame4Unlocked = isAdmin || (isRegistered && scoreState.game3.isCompleted);
+  const isResultsUnlocked = isAdmin || (isRegistered && scoreState.game4.isCompleted);
+  const isRankingUnlocked = isAdmin || isRegistered;
+
   const navItems = [
     {
       id: 'student_entry' as ActiveView,
-      title: 'Thông Tin Học Viên',
-      subtitle: student?.fullName || 'Họ tên, đơn vị, mã học viên',
+      title: '1. Thông Tin Học Viên',
+      subtitle: student?.fullName || 'Ghi danh trước khi vào thi',
       icon: <User className="w-4 h-4 text-indigo-600" />,
-      badge: 'Hồ sơ 📝',
-      badgeColor: 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200'
+      badge: isRegistered ? 'Đã ghi danh ✓' : 'Bắt buộc 📝',
+      badgeColor: isRegistered ? 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-200' : 'bg-rose-100 text-rose-800 font-black animate-pulse border border-rose-300',
+      isLocked: false,
     },
     {
       id: 'game1_mcq' as ActiveView,
-      title: 'Trò 1: Trắc Nghiệm 4 Đáp Án',
+      title: '2. Trò 1: Trắc Nghiệm 4 Đáp Án',
       subtitle: 'Tình huống sư phạm & phân hóa',
       icon: <CheckSquare className="w-4 h-4" />,
       points: `${scoreState.game1.score} / 25 đ`,
-      isDone: scoreState.game1.isCompleted
+      isDone: scoreState.game1.isCompleted,
+      isLocked: !isGame1Unlocked,
+      lockReason: 'Vui lòng hoàn thành Ghi danh học viên (Họ tên, đơn vị, mã học viên) để bắt đầu Trò 1!',
     },
     {
       id: 'game2_truefalse' as ActiveView,
-      title: 'Trò 2: Trắc Nghiệm Đúng / Sai',
+      title: '3. Trò 2: Trắc Nghiệm Đúng / Sai',
       subtitle: 'Phán đoán chuẩn mực khảo thí AI',
       icon: <ToggleLeft className="w-4 h-4" />,
       points: `${scoreState.game2.score} / 25 đ`,
-      isDone: scoreState.game2.isCompleted
+      isDone: scoreState.game2.isCompleted,
+      isLocked: !isGame2Unlocked,
+      lockReason: !isRegistered
+        ? 'Vui lòng ghi danh học viên trước!'
+        : 'Cần hoàn thành Trò 1 (Trắc nghiệm 4 đáp án) trước khi mở khóa Trò 2!',
     },
     {
       id: 'game3_dragdrop' as ActiveView,
-      title: 'Trò 3: Kéo Thả Ma Trận Đánh Giá',
+      title: '4. Trò 3: Kéo Thả Ma Trận Đánh Giá',
       subtitle: 'Phân loại mức độ tích hợp AI',
       icon: <Layers className="w-4 h-4" />,
       points: `${scoreState.game3.score} / 25 đ`,
-      isDone: scoreState.game3.isCompleted
+      isDone: scoreState.game3.isCompleted,
+      isLocked: !isGame3Unlocked,
+      lockReason: !isRegistered
+        ? 'Vui lòng ghi danh học viên trước!'
+        : 'Cần hoàn thành Trò 2 (Trắc nghiệm Đúng/Sai) trước khi mở khóa Trò 3!',
     },
     {
       id: 'game4_speed' as ActiveView,
-      title: 'Trò 4: Trả Lời Nhanh 4 Đáp Án',
+      title: '5. Trò 4: Trả Lời Nhanh 4 Đáp Án',
       subtitle: 'Phản xạ nhận diện thuật ngữ',
       icon: <Zap className="w-4 h-4" />,
       points: `${scoreState.game4.score} / 25 đ`,
-      isDone: scoreState.game4.isCompleted
+      isDone: scoreState.game4.isCompleted,
+      isLocked: !isGame4Unlocked,
+      lockReason: !isRegistered
+        ? 'Vui lòng ghi danh học viên trước!'
+        : 'Cần hoàn thành Trò 3 (Kéo thả ma trận) trước khi mở khóa Trò 4!',
     },
     {
       id: 'results_evaluation' as ActiveView,
-      title: 'Chứng Nhận Khởi Động Buổi 4',
+      title: '6. Chứng Nhận Khởi Động Buổi 4',
       subtitle: isPassed ? 'Xếp loại: ĐẠT' : 'Xếp loại: CHƯA ĐẠT',
       icon: <Award className="w-4 h-4" />,
       points: `${totalScore} / 100 đ`,
-      highlight: true
+      highlight: true,
+      isLocked: !isResultsUnlocked,
+      lockReason: !isRegistered
+        ? 'Vui lòng ghi danh học viên trước!'
+        : 'Cần hoàn thành lần lượt đủ 4 trò chơi để mở Chứng nhận và Báo cáo năng lực!',
     },
     {
       id: 'my_ranking' as ActiveView,
@@ -111,7 +143,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       subtitle: 'Vị trí thi đua & Phân tích điểm',
       icon: <Crown className="w-4 h-4 text-amber-500" />,
       badge: 'Cá nhân ⭐',
-      badgeColor: 'bg-indigo-100 text-indigo-800 font-black'
+      badgeColor: 'bg-indigo-100 text-indigo-800 font-black',
+      isLocked: !isRankingUnlocked,
+      lockReason: 'Vui lòng ghi danh học viên trước để xem vị trí thi đua của bạn!',
     },
     {
       id: 'class_leaderboard' as ActiveView,
@@ -119,7 +153,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       subtitle: 'Bục vinh quang & Kết quả toàn khóa',
       icon: <Trophy className="w-4 h-4 text-amber-500" />,
       badge: 'Cả lớp 🏆',
-      badgeColor: 'bg-amber-100 text-amber-900 border border-amber-200'
+      badgeColor: 'bg-amber-100 text-amber-900 border border-amber-200',
+      isLocked: false,
     },
     {
       id: 'admin_panel' as ActiveView,
@@ -127,13 +162,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       subtitle: 'Sửa điểm, xóa data, GitHub sync',
       icon: <ShieldCheck className="w-4 h-4 text-rose-500" />,
       badge: 'Admin 🔒',
-      badgeColor: 'bg-rose-100 text-rose-800 font-black'
+      badgeColor: 'bg-rose-100 text-rose-800 font-black',
+      isLocked: false,
     },
     {
       id: 'handbook' as ActiveView,
       title: 'Cẩm Nang Khảo Thí AI',
       subtitle: 'Tra cứu chuẩn GDPT & UNESCO',
-      icon: <BookOpen className="w-4 h-4" />
+      icon: <BookOpen className="w-4 h-4" />,
+      isLocked: false,
     }
   ];
 
@@ -220,38 +257,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
+        {/* Warning notification banner when clicked on locked game */}
+        {lockWarning && (
+          <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold flex items-start gap-2 animate-shake shadow-xs">
+            <span className="text-base shrink-0">🔒</span>
+            <div className="flex-1">
+              <span className="block font-black text-amber-950">Chưa Mở Khóa:</span>
+              <span className="text-[11px] font-medium leading-tight">{lockWarning}</span>
+            </div>
+            <button
+              onClick={() => setLockWarning(null)}
+              className="text-amber-700 hover:text-amber-950 font-bold text-xs p-1"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Vertical Navigation Menu */}
         <nav className="space-y-1">
           {navItems.map((item) => {
             const isActive = activeView === item.id;
+            const isLocked = !!item.isLocked;
+
             return (
               <button
                 key={item.id}
                 id={`sidebar-btn-${item.id}`}
                 onClick={() => {
+                  if (isLocked) {
+                    soundManager.playWrong();
+                    setLockWarning(item.lockReason || 'Vui lòng hoàn thành trò chơi trước để mở khóa!');
+                    setTimeout(() => setLockWarning(null), 5000);
+                    return;
+                  }
                   soundManager.playClick();
+                  setLockWarning(null);
                   onSelectView(item.id);
                 }}
                 className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                   isActive
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200 font-semibold'
+                    : isLocked
+                    ? 'bg-slate-50/70 border-slate-200/50 text-slate-400 opacity-60 hover:opacity-90 hover:bg-slate-100/80 cursor-not-allowed'
                     : item.highlight
                     ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100 font-semibold'
                     : 'bg-white border-transparent hover:bg-slate-100 text-slate-700'
                 }`}
+                title={isLocked ? `Khóa: ${item.lockReason}` : item.title}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className={`p-1.5 rounded-lg shrink-0 ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    isActive 
+                      ? 'bg-white/20 text-white' 
+                      : isLocked 
+                      ? 'bg-slate-200/70 text-slate-400' 
+                      : 'bg-slate-100 text-slate-600'
                   }`}>
-                    {item.icon}
+                    {isLocked ? <span className="text-xs">🔒</span> : item.icon}
                   </div>
                   <div className="truncate">
-                    <div className={`text-xs font-bold truncate ${isActive ? 'text-white' : 'text-slate-900'}`}>
-                      {item.title}
+                    <div className={`text-xs font-bold truncate flex items-center gap-1.5 ${
+                      isActive ? 'text-white' : isLocked ? 'text-slate-500' : 'text-slate-900'
+                    }`}>
+                      <span>{item.title}</span>
+                      {isLocked && <span className="text-[10px] text-amber-600 font-normal">🔒</span>}
                     </div>
-                    <div className={`text-[10px] truncate ${isActive ? 'text-indigo-100' : 'text-slate-500'}`}>
-                      {item.subtitle}
+                    <div className={`text-[10px] truncate ${
+                      isActive ? 'text-indigo-100' : isLocked ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      {isLocked ? 'Cần mở khóa theo thứ tự' : item.subtitle}
                     </div>
                   </div>
                 </div>
@@ -260,6 +335,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md shrink-0 ml-1.5 ${
                     isActive 
                       ? 'bg-white/25 text-white' 
+                      : isLocked
+                      ? 'bg-slate-200/50 text-slate-400'
                       : item.highlight
                       ? 'bg-amber-200/80 text-amber-900'
                       : 'bg-slate-100 text-slate-700'
@@ -268,7 +345,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                 )}
                 {item.badge && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ml-1.5 ${item.badgeColor}`}>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ml-1.5 ${
+                    isLocked ? 'bg-slate-100 text-slate-400 border border-slate-200' : item.badgeColor
+                  }`}>
                     {item.badge}
                   </span>
                 )}

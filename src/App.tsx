@@ -223,18 +223,98 @@ export default function App() {
     });
   };
 
+  const handleSelectView = (targetView: ActiveView) => {
+    if (isAdmin) {
+      setActiveView(targetView);
+      return;
+    }
+
+    // Public / Free views
+    if (targetView === 'student_entry' || targetView === 'class_leaderboard' || targetView === 'admin_panel' || targetView === 'handbook') {
+      setActiveView(targetView);
+      return;
+    }
+
+    // Must be registered before entering any game or personal result
+    if (!isRegistered) {
+      setActiveView('student_entry');
+      return;
+    }
+
+    // Sequential progression checks
+    if (targetView === 'game1_mcq') {
+      setActiveView('game1_mcq');
+      return;
+    }
+
+    if (targetView === 'game2_truefalse') {
+      if (scoreState.game1.isCompleted) {
+        setActiveView('game2_truefalse');
+      } else {
+        setActiveView('game1_mcq');
+      }
+      return;
+    }
+
+    if (targetView === 'game3_dragdrop') {
+      if (scoreState.game2.isCompleted) {
+        setActiveView('game3_dragdrop');
+      } else if (scoreState.game1.isCompleted) {
+        setActiveView('game2_truefalse');
+      } else {
+        setActiveView('game1_mcq');
+      }
+      return;
+    }
+
+    if (targetView === 'game4_speed') {
+      if (scoreState.game3.isCompleted) {
+        setActiveView('game4_speed');
+      } else if (scoreState.game2.isCompleted) {
+        setActiveView('game3_dragdrop');
+      } else if (scoreState.game1.isCompleted) {
+        setActiveView('game2_truefalse');
+      } else {
+        setActiveView('game1_mcq');
+      }
+      return;
+    }
+
+    if (targetView === 'results_evaluation') {
+      if (scoreState.game4.isCompleted) {
+        setActiveView('results_evaluation');
+      } else {
+        // Fallback to highest unlocked game
+        if (!scoreState.game1.isCompleted) setActiveView('game1_mcq');
+        else if (!scoreState.game2.isCompleted) setActiveView('game2_truefalse');
+        else if (!scoreState.game3.isCompleted) setActiveView('game3_dragdrop');
+        else setActiveView('game4_speed');
+      }
+      return;
+    }
+
+    if (targetView === 'my_ranking') {
+      setActiveView('my_ranking');
+      return;
+    }
+
+    setActiveView(targetView);
+  };
+
   return (
     <div id="ai-assessment-app-root" className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col lg:flex-row font-sans selection:bg-indigo-500 selection:text-white">
       {/* Vertical Sidebar */}
       <Sidebar
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={handleSelectView}
         student={student}
         scoreState={scoreState}
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
         onResetAll={handleResetAll}
         onUpdateStudentInfo={handleUpdateStudentInfo}
+        isRegistered={isRegistered}
+        isAdmin={isAdmin}
       />
 
       {/* Main Content Stage */}
@@ -243,7 +323,7 @@ export default function App() {
           <StudentEntryView
             student={student}
             onSaveStudent={handleSaveStudent}
-            onProceedToQuiz={() => setActiveView('game1_mcq')}
+            onProceedToQuiz={() => handleSelectView('game1_mcq')}
           />
         )}
 
@@ -251,7 +331,7 @@ export default function App() {
           <Game1MCQView
             scoreState={scoreState}
             onUpdateScore={(k, s, a, c) => handleUpdateScore(k, s, a, c)}
-            onNextGame={() => setActiveView('game2_truefalse')}
+            onNextGame={() => handleSelectView('game2_truefalse')}
           />
         )}
 
@@ -259,7 +339,7 @@ export default function App() {
           <Game2TrueFalseView
             scoreState={scoreState}
             onUpdateScore={(k, s, a, c) => handleUpdateScore(k, s, a, c)}
-            onNextGame={() => setActiveView('game3_dragdrop')}
+            onNextGame={() => handleSelectView('game3_dragdrop')}
           />
         )}
 
@@ -267,7 +347,7 @@ export default function App() {
           <Game3DragDropView
             scoreState={scoreState}
             onUpdateScore={(k, s, m, c) => handleUpdateScore(k, s, m, c)}
-            onNextGame={() => setActiveView('game4_speed')}
+            onNextGame={() => handleSelectView('game4_speed')}
           />
         )}
 
@@ -275,7 +355,7 @@ export default function App() {
           <Game4SpeedBlitzView
             scoreState={scoreState}
             onUpdateScore={(k, s, a, c) => handleUpdateScore(k, s, a, c)}
-            onViewResults={() => setActiveView('results_evaluation')}
+            onViewResults={() => handleSelectView('results_evaluation')}
           />
         )}
 
@@ -283,7 +363,7 @@ export default function App() {
           <ResultsEvaluationView
             student={student}
             scoreState={scoreState}
-            onNavigateGame={(v) => setActiveView(v)}
+            onNavigateGame={(v) => handleSelectView(v)}
           />
         )}
 
@@ -291,21 +371,21 @@ export default function App() {
           <MyRankingView
             student={student}
             scoreState={scoreState}
-            onNavigate={(v) => setActiveView(v)}
+            onNavigate={(v) => handleSelectView(v)}
           />
         )}
 
         {activeView === 'class_leaderboard' && (
           <ClassLeaderboardView
             currentStudent={student}
-            onNavigate={(v) => setActiveView(v)}
+            onNavigate={(v) => handleSelectView(v)}
             onNavigateToStudent={() => {}}
           />
         )}
 
         {activeView === 'admin_panel' && (
           <AdminPanelView
-            onNavigate={(v) => setActiveView(v)}
+            onNavigate={(v) => handleSelectView(v)}
             isAdmin={isAdmin}
             onSetIsAdmin={setIsAdmin}
           />
