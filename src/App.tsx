@@ -21,20 +21,60 @@ const INITIAL_SCORE_STATE: ScoreState = {
 };
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ActiveView>('game1_mcq');
+  // Check if student has already completed their registration
+  const [isRegistered, setIsRegistered] = useState<boolean>(() => {
+    try {
+      const savedReg = localStorage.getItem('ai_assessment_registered');
+      const saved = localStorage.getItem('ai_assessment_student');
+      if (savedReg === 'true' && saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed.fullName && 
+          parsed.fullName.trim() !== '' && 
+          parsed.fullName !== 'Học viên' && 
+          parsed.schoolOrOrg && 
+          parsed.studentId
+        ) {
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  });
+
+  const [activeView, setActiveView] = useState<ActiveView>(() => {
+    try {
+      const savedReg = localStorage.getItem('ai_assessment_registered');
+      const saved = localStorage.getItem('ai_assessment_student');
+      if (savedReg === 'true' && saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed.fullName && 
+          parsed.fullName.trim() !== '' && 
+          parsed.fullName !== 'Học viên' && 
+          parsed.schoolOrOrg && 
+          parsed.studentId
+        ) {
+          return 'game1_mcq';
+        }
+      }
+    } catch (e) {}
+    return 'student_entry';
+  });
+
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted);
   const [scoreState, setScoreState] = useState<ScoreState>(INITIAL_SCORE_STATE);
 
-  // Student info defaults to instant guest access without requiring login
+  // Student info state
   const [student, setStudent] = useState<StudentInfo>(() => {
     try {
       const saved = localStorage.getItem('ai_assessment_student');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {
-      fullName: 'Học viên',
-      schoolOrOrg: 'Đơn vị giáo dục',
+      fullName: '',
+      schoolOrOrg: '',
       studentId: `HV-${Math.floor(1000 + Math.random() * 9000)}`,
       avatar: '👨‍🏫',
       startedAt: new Date().toISOString(),
@@ -43,14 +83,14 @@ export default function App() {
 
   // Save student info locally
   useEffect(() => {
-    if (student) {
+    if (student && student.fullName) {
       localStorage.setItem('ai_assessment_student', JSON.stringify(student));
     }
   }, [student]);
 
   // Sync submission to central server whenever student or scoreState updates
   useEffect(() => {
-    if (!student) return;
+    if (!student || !student.fullName || student.fullName === 'Học viên') return;
 
     const totalScore = 
       scoreState.game1.score + 
@@ -64,40 +104,54 @@ export default function App() {
       (scoreState.game3.isCompleted ? 1 : 0) +
       (scoreState.game4.isCompleted ? 1 : 0);
 
-    // Only post if student has started playing or updated info
-    if (totalScore > 0 || completedCount > 0 || student.fullName !== 'Học viên') {
-      const payload = {
-        studentId: student.studentId,
-        fullName: student.fullName,
-        schoolOrOrg: student.schoolOrOrg,
-        avatar: student.avatar,
-        scores: {
-          game1: scoreState.game1.score,
-          game2: scoreState.game2.score,
-          game3: scoreState.game3.score,
-          game4: scoreState.game4.score,
-          totalScore,
-        },
-        completionStatus: {
-          game1Completed: scoreState.game1.isCompleted,
-          game2Completed: scoreState.game2.isCompleted,
-          game3Completed: scoreState.game3.isCompleted,
-          game4Completed: scoreState.game4.isCompleted,
-          completedGamesCount: completedCount,
-          percentage: completedCount * 25,
-        },
-      };
+    const payload = {
+      studentId: student.studentId || `HV-${Math.floor(1000 + Math.random() * 9000)}`,
+      fullName: student.fullName,
+      schoolOrOrg: student.schoolOrOrg || 'Đơn vị giáo dục',
+      avatar: student.avatar || '👨‍🏫',
+      scores: {
+        game1: scoreState.game1.score,
+        game2: scoreState.game2.score,
+        game3: scoreState.game3.score,
+        game4: scoreState.game4.score,
+        totalScore,
+      },
+      completionStatus: {
+        game1Completed: scoreState.game1.isCompleted,
+        game2Completed: scoreState.game2.isCompleted,
+        game3Completed: scoreState.game3.isCompleted,
+        game4Completed: scoreState.game4.isCompleted,
+        completedGamesCount: completedCount,
+        percentage: completedCount * 25,
+      },
+    };
 
-      fetch('/api/submissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch((err) => console.error('Sync submission error:', err));
-    }
+    fetch('/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err) => console.error('Sync submission error:', err));
   }, [student, scoreState]);
 
   const handleUpdateStudentInfo = (info: Partial<StudentInfo>) => {
-    setStudent((prev) => ({ ...prev, ...info }));
+    setStudent((prev) => {
+      const updated = { ...prev, ...info };
+      if (updated.fullName && updated.fullName.trim() !== '') {
+        setIsRegistered(true);
+        localStorage.setItem('ai_assessment_registered', 'true');
+      }
+      return updated;
+    });
+  };
+
+  const handleSaveStudent = (info: StudentInfo) => {
+    setStudent(info);
+    setIsRegistered(true);
+    try {
+      localStorage.setItem('ai_assessment_registered', 'true');
+      localStorage.setItem('ai_assessment_student', JSON.stringify(info));
+    } catch (e) {}
+    setActiveView('game1_mcq');
   };
 
   const handleToggleMute = () => {
@@ -188,7 +242,7 @@ export default function App() {
         {activeView === 'student_entry' && (
           <StudentEntryView
             student={student}
-            onSaveStudent={(info) => setStudent(info)}
+            onSaveStudent={handleSaveStudent}
             onProceedToQuiz={() => setActiveView('game1_mcq')}
           />
         )}

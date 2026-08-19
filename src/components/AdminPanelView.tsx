@@ -19,9 +19,33 @@ import {
   Users, 
   ExternalLink,
   Search,
-  Check
+  Check,
+  HardDrive,
+  FileText,
+  FolderPlus,
+  LogIn,
+  LogOut,
+  Sparkles
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
+import { 
+  initGoogleAuth, 
+  googleSignIn, 
+  googleLogout, 
+  getGoogleAccessToken 
+} from '../utils/googleAuth';
+import { 
+  findOrCreateFolder, 
+  uploadFileToGoogleDrive, 
+  listAppDriveFiles, 
+  deleteDriveFile,
+  DriveFileItem 
+} from '../utils/googleDrive';
+import { 
+  createOrExportToGoogleSheet, 
+  appendStudentToGoogleSheet 
+} from '../utils/googleSheets';
+import { User } from 'firebase/auth';
 
 interface AdminPanelViewProps {
   onNavigate: (view: ActiveView) => void;
@@ -40,6 +64,15 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   const [stats, setStats] = useState<LeaderboardStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Google Drive State
+  const [googleUser, setGoogleUser] = useState<User | null>(null);
+  const [driveToken, setDriveToken] = useState<string | null>(null);
+  const [driveFiles, setDriveFiles] = useState<DriveFileItem[]>([]);
+  const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
+  const [driveLoading, setDriveLoading] = useState<boolean>(false);
+  const [sheetLoading, setSheetLoading] = useState<boolean>(false);
+  const [driveStatus, setDriveStatus] = useState<{ success?: boolean; message?: string; url?: string } | null>(null);
 
   // GitHub Config State
   const [ghOwner, setGhOwner] = useState<string>('');
@@ -68,6 +101,157 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
   // Confirmation Modals
   const [showClearAllConfirm, setShowClearAllConfirm] = useState<boolean>(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  // Init Google Auth listener
+  useEffect(() => {
+    const unsubscribe = initGoogleAuth(
+      (user, token) => {
+        setGoogleUser(user);
+        setDriveToken(token);
+        fetchDriveFiles(token);
+      },
+      () => {
+        setGoogleUser(null);
+        setDriveToken(null);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const fetchDriveFiles = async (token: string) => {
+    try {
+      const folderId = await findOrCreateFolder(token, 'Khao_Thi_Su_Pham_So_Buoi_4');
+      setDriveFolderId(folderId);
+      const files = await listAppDriveFiles(token, folderId);
+      setDriveFiles(files);
+    } catch (err) {
+      console.error('Fetch Drive files error:', err);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    soundManager.playClick();
+    setDriveLoading(true);
+    setDriveStatus(null);
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setGoogleUser(res.user);
+        setDriveToken(res.accessToken);
+        await fetchDriveFiles(res.accessToken);
+        soundManager.playCorrect();
+        setDriveStatus({ success: true, message: `Đã kết nối tài khoản Google: ${res.user.email}` });
+      }
+    } catch (err: any) {
+      soundManager.playWrong();
+      setDriveStatus({ success: false, message: `Lỗi đăng nhập Google: ${err.message}` });
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    soundManager.playClick();
+    await googleLogout();
+    setGoogleUser(null);
+    setDriveToken(null);
+    setDriveFiles([]);
+  };
+
+  const handleSaveToGoogleDrive = async (type: 'json' | 'markdown') => {
+    soundManager.playClick();
+    if (!driveToken) {
+      alert('Vui lòng kết nối tài khoản Google trước.');
+      return;
+    }
+
+    setDriveLoading(true);
+    setDriveStatus(null);
+
+    try {
+      const folderId = driveFolderId || (await findOrCreateFolder(driveToken, 'Khao_Thi_Su_Pham_So_Buoi_4'));
+      setDriveFolderId(folderId);
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+      if (type === 'json') {
+        const fileName = `Ket_Qua_Hoc_Vien_Buoi4_${timestamp}.json`;
+        const content = JSON.stringify(submissions, null, 2);
+        const uploaded = await uploadFileToGoogleDrive(driveToken, fileName, content, 'application/json', folderId);
+        soundManager.playCorrect();
+        setDriveStatus({
+          success: true,
+          message: `Đã lưu tệp JSON (${submissions.length} học viên) vào Google Drive thành công!`,
+          url: uploaded.webViewLink,
+        });
+      } else {
+        // Generate Markdown report
+        const exportRes = await fetch('/api/submissions/export/github');
+        const exportData = await exportRes.json();
+        const fileName = `Bao_Cao_Khao_Thi_Buoi4_${timestamp}.md`;
+        const uploaded = await uploadFileToGoogleDrive(driveToken, fileName, exportData.markdown || '', 'text/markdown', folderId);
+        soundManager.playCorrect();
+        setDriveStatus({
+          success: true,
+          message: `Đã lưu Báo cáo Khảo Thí Markdown vào Google Drive thành công!`,
+          url: uploaded.webViewLink,
+        });
+      }
+
+      const files = await listAppDriveFiles(driveToken, folderId);
+      setDriveFiles(files);
+    } catch (err: any) {
+      soundManager.playWrong();
+      setDriveStatus({ success: false, message: `Lỗi lưu Google Drive: ${err.message}` });
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+
+  const handleCreateGoogleSheet = async () => {
+    soundManager.playClick();
+    if (!driveToken) {
+      alert('Vui lòng kết nối tài khoản Google trước để xuất Google Sheet.');
+      return;
+    }
+
+    setSheetLoading(true);
+    setDriveStatus(null);
+
+    try {
+      const result = await createOrExportToGoogleSheet(driveToken, submissions);
+      soundManager.playCorrect();
+      setDriveStatus({
+        success: true,
+        message: `Đã tạo Google Sheet "${result.title}" với ${submissions.length} học viên thành công!`,
+        url: result.spreadsheetUrl,
+      });
+
+      const folderId = driveFolderId || (await findOrCreateFolder(driveToken, 'Khao_Thi_Su_Pham_So_Buoi_4'));
+      setDriveFolderId(folderId);
+      const files = await listAppDriveFiles(driveToken, folderId);
+      setDriveFiles(files);
+    } catch (err: any) {
+      soundManager.playWrong();
+      setDriveStatus({ success: false, message: `Lỗi tạo Google Sheet: ${err.message}` });
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
+  const handleDeleteDriveFile = async (file: DriveFileItem) => {
+    if (!driveToken) return;
+    try {
+      await deleteDriveFile(driveToken, file.id, file.name);
+      if (driveFolderId) {
+        const files = await listAppDriveFiles(driveToken, driveFolderId);
+        setDriveFiles(files);
+      }
+      soundManager.playCorrect();
+    } catch (err: any) {
+      alert(`Lỗi xóa tệp: ${err.message}`);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -324,7 +508,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               Đăng Nhập Quản Trị Viên (Admin)
             </h2>
             <p className="text-xs text-slate-500">
-              Dành cho Giảng viên / Ban tổ chức điều chỉnh điểm, xóa data, và đồng bộ GitHub Online.
+              Dành cho Giảng viên / Ban tổ chức điều chỉnh điểm, xóa data, và đồng bộ Google Drive / GitHub Online.
             </p>
           </div>
 
@@ -384,10 +568,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
             <span>KHÔNG GIAN QUẢN TRỊ VIÊN & GIẢNG VIÊN</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Quản Trị Bảng Điểm & Đồng Bộ GitHub Online
+            Quản Trị Bảng Điểm, Google Drive & GitHub Online
           </h1>
           <p className="text-xs text-slate-300 max-w-2xl">
-            Tùy chỉnh điểm số, xóa toàn bộ data thử nghiệm, thêm học viên và trỏ trực tiếp toàn bộ dữ liệu lên GitHub Repository lưu trữ trực tuyến.
+            Tùy chỉnh điểm số, xóa data, thêm học viên và lưu trữ trực tuyến lên Google Drive & GitHub Repository.
           </p>
         </div>
 
@@ -407,6 +591,174 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
             <span>Xóa Toàn Bộ Data ({submissions.length})</span>
           </button>
         </div>
+      </div>
+
+      {/* GOOGLE DRIVE INTEGRATION CARD */}
+      <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shadow-sm shrink-0">
+              <HardDrive className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <span>Đồng Bộ Google Workspace (Sheets & Drive)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold">Google Sheets & Drive</span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Tạo bảng tính Google Sheets trực tiếp, tự động tải file JSON & Báo cáo Khảo thí Markdown vào Google Drive.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!googleUser ? (
+              <button
+                onClick={handleGoogleSignIn}
+                disabled={driveLoading || sheetLoading}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                </svg>
+                <span>{driveLoading || sheetLoading ? 'Đang kết nối...' : 'Đăng Nhập Google'}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <div className="text-xs font-bold text-slate-900">{googleUser.displayName || 'Tài khoản Google'}</div>
+                  <div className="text-[10px] text-slate-500">{googleUser.email}</div>
+                </div>
+                <button
+                  onClick={handleGoogleLogout}
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition-colors"
+                  title="Đăng xuất Google"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Google Workspace Actions */}
+        {googleUser && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleCreateGoogleSheet}
+                disabled={sheetLoading || driveLoading}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-2 shadow-md shadow-emerald-200 transition-all hover:scale-102 cursor-pointer disabled:opacity-50"
+              >
+                <FileSpreadsheet className={`w-4 h-4 ${sheetLoading ? 'animate-spin' : ''}`} />
+                <span>{sheetLoading ? 'Đang tạo Google Sheet...' : 'Tạo Bảng Điểm Google Sheets (Mới)'}</span>
+              </button>
+
+              <button
+                onClick={() => handleSaveToGoogleDrive('json')}
+                disabled={driveLoading || sheetLoading}
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-2 shadow-md shadow-amber-200 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <FolderPlus className="w-4 h-4" />
+                <span>Lưu Dữ Liệu JSON Lên Drive</span>
+              </button>
+
+              <button
+                onClick={() => handleSaveToGoogleDrive('markdown')}
+                disabled={driveLoading || sheetLoading}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black flex items-center gap-2 shadow-md shadow-indigo-200 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Lưu Báo Cáo Markdown Lên Drive</span>
+              </button>
+
+              <button
+                onClick={() => driveToken && fetchDriveFiles(driveToken)}
+                className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${driveLoading ? 'animate-spin' : ''}`} />
+                <span>Làm mới tệp Drive</span>
+              </button>
+            </div>
+
+            {/* Google Drive Status Notification */}
+            {driveStatus && (
+              <div className={`p-3 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 border ${
+                driveStatus.success 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {driveStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
+                  <span>{driveStatus.message}</span>
+                </div>
+                {driveStatus.url && (
+                  <a
+                    href={driveStatus.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-600 hover:underline flex items-center gap-1 shrink-0 font-black"
+                  >
+                    <span>Mở trên Google Drive</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* List of files in Google Drive */}
+            {driveFiles.length > 0 && (
+              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-2">
+                <div className="text-xs font-black text-slate-800 flex items-center justify-between">
+                  <span>Các tệp đã lưu trong thư mục Google Drive (Khao_Thi_Su_Pham_So_Buoi_4):</span>
+                  <span className="text-[10px] text-slate-500 font-normal">{driveFiles.length} tệp</span>
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {driveFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="bg-white border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs hover:border-indigo-300 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span className="font-bold text-slate-800 truncate">{file.name}</span>
+                        {file.createdTime && (
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {new Date(file.createdTime).toLocaleTimeString('vi-VN')}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {file.webViewLink && (
+                          <a
+                            href={file.webViewLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                            title="Xem trên Google Drive"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleDeleteDriveFile(file)}
+                          className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                          title="Xóa tệp này khỏi Google Drive"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* GitHub Cloud Storage Settings Card */}
@@ -836,7 +1188,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 Xóa Học Viên Này?
               </h3>
               <p className="text-xs text-slate-500">
-                Bản ghi của học viên sẽ bị gỡ bỏ khỏi bảng thi đua và GitHub dataset.
+                Bản ghi của học viên sẽ bị gỡ bỏ khỏi bảng thi đua và dataset.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-2">

@@ -30,9 +30,14 @@ import {
   ShieldCheck,
   Building2,
   ChevronRight,
-  RotateCcw
+  RotateCcw,
+  HardDrive,
+  ExternalLink
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
+import { googleSignIn, getGoogleAccessToken } from '../utils/googleAuth';
+import { uploadFileToGoogleDrive, findOrCreateFolder } from '../utils/googleDrive';
+import { createOrExportToGoogleSheet } from '../utils/googleSheets';
 
 interface ClassLeaderboardViewProps {
   currentStudent: StudentInfo | null;
@@ -228,6 +233,60 @@ export const ClassLeaderboardView: React.FC<ClassLeaderboardViewProps> = ({
   const top1Score = top1 ? top1.scores.totalScore : 100;
   const diffToTop1 = Math.max(0, top1Score - myTotal);
 
+  const [savingToDrive, setSavingToDrive] = useState<boolean>(false);
+  const [exportingSheet, setExportingSheet] = useState<boolean>(false);
+  const [driveSaveSuccess, setDriveSaveSuccess] = useState<string | null>(null);
+
+  const handleExportToGoogleSheet = async () => {
+    soundManager.playClick();
+    setExportingSheet(true);
+    setDriveSaveSuccess(null);
+    try {
+      let token = await getGoogleAccessToken();
+      if (!token) {
+        const res = await googleSignIn();
+        if (res) token = res.accessToken;
+      }
+      if (!token) throw new Error('Cần đăng nhập tài khoản Google.');
+
+      const result = await createOrExportToGoogleSheet(token, submissions);
+      soundManager.playCorrect();
+      setDriveSaveSuccess(result.spreadsheetUrl);
+    } catch (err: any) {
+      soundManager.playWrong();
+      alert(`Lỗi xuất Google Sheets: ${err.message}`);
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
+  const handleSaveToDrive = async () => {
+    soundManager.playClick();
+    setSavingToDrive(true);
+    setDriveSaveSuccess(null);
+    try {
+      let token = await getGoogleAccessToken();
+      if (!token) {
+        const res = await googleSignIn();
+        if (res) token = res.accessToken;
+      }
+      if (!token) throw new Error('Cần đăng nhập tài khoản Google.');
+
+      const folderId = await findOrCreateFolder(token, 'Khao_Thi_Su_Pham_So_Buoi_4');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fileName = `Bang_Thi_Dua_Buoi4_${timestamp}.json`;
+      const uploaded = await uploadFileToGoogleDrive(token, fileName, JSON.stringify(submissions, null, 2), 'application/json', folderId);
+      
+      soundManager.playCorrect();
+      setDriveSaveSuccess(uploaded.webViewLink || 'Đã lưu thành công lên Google Drive!');
+    } catch (err: any) {
+      soundManager.playWrong();
+      alert(`Lỗi lưu Google Drive: ${err.message}`);
+    } finally {
+      setSavingToDrive(false);
+    }
+  };
+
   return (
     <div id="class-competition-board-root" className="max-w-6xl mx-auto px-2 sm:px-4 py-6 space-y-6 animate-fadeIn">
       
@@ -285,6 +344,26 @@ export const ClassLeaderboardView: React.FC<ClassLeaderboardViewProps> = ({
             </button>
 
             <button
+              onClick={handleExportToGoogleSheet}
+              disabled={exportingSheet}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title="Xuất bảng điểm trực tiếp thành Google Spreadsheet"
+            >
+              <FileSpreadsheet className={`w-4 h-4 ${exportingSheet ? 'animate-spin' : ''}`} />
+              <span>{exportingSheet ? 'Đang tạo Sheet...' : 'Xuất Google Sheets'}</span>
+            </button>
+
+            <button
+              onClick={handleSaveToDrive}
+              disabled={savingToDrive}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              title="Lưu bảng điểm trực tiếp vào Google Drive của bạn"
+            >
+              <HardDrive className={`w-4 h-4 ${savingToDrive ? 'animate-spin' : ''}`} />
+              <span>{savingToDrive ? 'Đang lưu...' : 'Lưu Drive'}</span>
+            </button>
+
+            <button
               onClick={handleExportCsv}
               className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               title="Tải bảng tính Excel CSV"
@@ -306,6 +385,30 @@ export const ClassLeaderboardView: React.FC<ClassLeaderboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {driveSaveSuccess && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>
+              {driveSaveSuccess.includes('spreadsheets')
+                ? 'Đã tạo và xuất thành công Bảng Điểm lên Google Sheets trong Google Drive của bạn!'
+                : 'Đã lưu thành công dữ liệu bảng thi đua vào Google Drive của bạn!'}
+            </span>
+          </div>
+          {driveSaveSuccess.startsWith('http') && (
+            <a
+              href={driveSaveSuccess}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center gap-1.5 hover:bg-emerald-700 transition-colors shrink-0 shadow-sm"
+            >
+              <span>{driveSaveSuccess.includes('spreadsheets') ? 'Mở Google Sheets' : 'Xem trên Google Drive'}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
+      )}
 
       {/* TOP 3 PODIUM (BỤC VINH QUANG THI ĐUA) */}
       {submissions.length > 0 && (

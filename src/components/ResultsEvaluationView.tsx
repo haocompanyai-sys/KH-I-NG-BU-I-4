@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { StudentInfo, ScoreState, EvaluationResult } from '../types';
 import { 
   Award, 
@@ -14,9 +14,13 @@ import {
   Hash,
   GraduationCap,
   XCircle,
-  Trophy
+  Trophy,
+  HardDrive,
+  ExternalLink
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
+import { googleSignIn, getGoogleAccessToken } from '../utils/googleAuth';
+import { uploadFileToGoogleDrive, findOrCreateFolder } from '../utils/googleDrive';
 
 interface ResultsEvaluationViewProps {
   student: StudentInfo | null;
@@ -79,9 +83,79 @@ export const ResultsEvaluationView: React.FC<ResultsEvaluationViewProps> = ({
 
   const evalResult = getEvaluationTier(totalScore);
 
+  const [savingCertToDrive, setSavingCertToDrive] = useState<boolean>(false);
+  const [driveCertLink, setDriveCertLink] = useState<string | null>(null);
+
   const handlePrint = () => {
     soundManager.playClick();
     window.print();
+  };
+
+  const handleSaveCertificateToDrive = async () => {
+    soundManager.playClick();
+    setSavingCertToDrive(true);
+    setDriveCertLink(null);
+
+    try {
+      let token = await getGoogleAccessToken();
+      if (!token) {
+        const res = await googleSignIn();
+        if (res) token = res.accessToken;
+      }
+      if (!token) throw new Error('Cần đăng nhập tài khoản Google.');
+
+      const folderId = await findOrCreateFolder(token, 'Khao_Thi_Su_Pham_So_Buoi_4');
+      const studentName = (student?.fullName || 'HocVien').replace(/\s+/g, '_');
+      const fileName = `Giay_Chung_Nhan_${studentName}_Buoi4.html`;
+
+      const htmlContent = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Giấy Chứng Nhận Khảo Thí Sư Phạm Số - ${student?.fullName || 'Học Viên'}</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; padding: 40px; display: flex; justify-content: center; }
+    .cert-card { background: white; border: 4px double #4f46e5; border-radius: 24px; padding: 40px; max-width: 650px; width: 100%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+    h1 { color: #1e1b4b; font-size: 24px; margin-bottom: 6px; }
+    .subtitle { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+    .name { font-size: 26px; font-weight: 900; color: #4f46e5; margin: 15px 0 5px; }
+    .meta { font-size: 13px; color: #475569; margin-bottom: 20px; }
+    .score-badge { display: inline-block; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; padding: 12px 24px; font-size: 20px; font-weight: 800; color: #3730a3; margin-bottom: 20px; }
+    .tier { font-weight: 900; color: ${evalResult.tier === 'Đạt' ? '#15803d' : '#be123c'}; font-size: 16px; margin-bottom: 20px; }
+    .footer { font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 20px; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="cert-card">
+    <div style="font-size: 36px; margin-bottom: 8px;">🎓</div>
+    <h1>GIẤY CHỨNG NHẬN HOÀN THÀNH KHỞI ĐỘNG</h1>
+    <div class="subtitle">Chuyên đề: Ứng Dụng AI Trong Khảo Thí & Kiểm Tra Đánh Giá &bull; Buổi 4</div>
+    <div style="border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 15px 0;">
+      <div style="font-size: 12px; color: #64748b;">Chứng nhận Thầy / Cô:</div>
+      <div class="name">${student?.fullName || 'Học Viên'}</div>
+      <div class="meta">${student?.schoolOrOrg || 'Đơn vị giáo dục'} | SBD: ${student?.studentId || 'HV-2026'}</div>
+    </div>
+    <div style="margin-top: 20px;">
+      <div class="score-badge">Tổng Điểm: ${totalScore} / 100</div>
+      <div class="tier">XẾP LOẠI: ${evalResult.tier.toUpperCase()} (${evalResult.title})</div>
+    </div>
+    <div class="footer">
+      <span>Ngày cấp: ${new Date().toLocaleDateString('vi-VN')}</span>
+      <strong>BAN ĐÀO TẠO KHẢO THÍ SƯ PHẠM SỐ</strong>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const uploaded = await uploadFileToGoogleDrive(token, fileName, htmlContent, 'text/html', folderId);
+      soundManager.playCorrect();
+      setDriveCertLink(uploaded.webViewLink || 'Đã lưu thành công!');
+    } catch (err: any) {
+      soundManager.playWrong();
+      alert(`Lỗi lưu chứng nhận vào Google Drive: ${err.message}`);
+    } finally {
+      setSavingCertToDrive(false);
+    }
   };
 
   return (
@@ -278,6 +352,15 @@ export const ResultsEvaluationView: React.FC<ResultsEvaluationViewProps> = ({
       {/* Print / Action Buttons */}
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <button
+          onClick={handleSaveCertificateToDrive}
+          disabled={savingCertToDrive}
+          className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-md shadow-amber-200 flex items-center gap-2 transition-all hover:scale-102 cursor-pointer disabled:opacity-50"
+        >
+          <HardDrive className={`w-4 h-4 ${savingCertToDrive ? 'animate-spin' : ''}`} />
+          <span>{savingCertToDrive ? 'Đang lưu Google Drive...' : 'Lưu Chứng Nhận Vào Google Drive'}</span>
+        </button>
+
+        <button
           onClick={handlePrint}
           className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm flex items-center gap-2 transition-all hover:scale-102 cursor-pointer"
         >
@@ -287,9 +370,9 @@ export const ResultsEvaluationView: React.FC<ResultsEvaluationViewProps> = ({
 
         <button
           onClick={() => onNavigateGame('class_leaderboard')}
-          className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-md shadow-amber-200 flex items-center gap-2 transition-all hover:scale-102 cursor-pointer"
+          className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-md shadow-indigo-200 flex items-center gap-2 transition-all hover:scale-102 cursor-pointer"
         >
-          <Trophy className="w-4 h-4 text-yellow-100" />
+          <Trophy className="w-4 h-4 text-yellow-200" />
           <span>Bảng Thi Đua Học Tập & Bục Vinh Quang</span>
         </button>
 
@@ -301,6 +384,26 @@ export const ResultsEvaluationView: React.FC<ResultsEvaluationViewProps> = ({
           <span>Đổi Thông Tin Học Viên</span>
         </button>
       </div>
+
+      {driveCertLink && (
+        <div className="max-w-lg mx-auto p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Đã lưu chứng nhận hoàn thành vào Google Drive của bạn!</span>
+          </div>
+          {driveCertLink.startsWith('http') && (
+            <a
+              href={driveCertLink}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center gap-1 hover:bg-emerald-700 transition-colors shrink-0"
+            >
+              <span>Mở Drive</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 };

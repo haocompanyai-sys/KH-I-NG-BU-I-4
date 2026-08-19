@@ -44,8 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onUpdateStudentInfo,
 }) => {
   const [showEditNameModal, setShowEditNameModal] = useState<boolean>(false);
-  const [editFullName, setEditFullName] = useState<string>(student?.fullName || 'Học viên');
-  const [editSchool, setEditSchool] = useState<string>(student?.schoolOrOrg || 'Đơn vị giáo dục');
+  const [editFullName, setEditFullName] = useState<string>(student?.fullName || '');
+  const [editSchool, setEditSchool] = useState<string>(student?.schoolOrOrg || '');
+  const [editStudentId, setEditStudentId] = useState<string>(student?.studentId || '');
 
   const totalScore = 
     scoreState.game1.score + 
@@ -56,6 +57,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isPassed = totalScore >= 50;
 
   const navItems = [
+    {
+      id: 'student_entry' as ActiveView,
+      title: 'Thông Tin Học Viên',
+      subtitle: student?.fullName || 'Họ tên, đơn vị, mã học viên',
+      icon: <User className="w-4 h-4 text-indigo-600" />,
+      badge: 'Hồ sơ 📝',
+      badgeColor: 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200'
+    },
     {
       id: 'game1_mcq' as ActiveView,
       title: 'Trò 1: Trắc Nghiệm 4 Đáp Án',
@@ -135,6 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onUpdateStudentInfo({
         fullName: editFullName.trim(),
         schoolOrOrg: editSchool.trim() || 'Đơn vị giáo dục',
+        studentId: editStudentId.trim() || student?.studentId || `HV-${Math.floor(1000 + Math.random() * 9000)}`,
       });
     }
     setShowEditNameModal(false);
@@ -338,7 +348,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   value={editSchool}
                   onChange={(e) => setEditSchool(e.target.value)}
                   placeholder="Ví dụ: THPT Chuyên, ĐH Sư Phạm..."
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-600"
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-600 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Mã Học Viên / SBD:</label>
+                <input
+                  type="text"
+                  value={editStudentId}
+                  onChange={(e) => setEditStudentId(e.target.value)}
+                  placeholder="Ví dụ: HV-2026..."
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-600 font-mono"
                 />
               </div>
 
