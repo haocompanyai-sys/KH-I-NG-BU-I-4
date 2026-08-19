@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActiveView, StudentInfo, ScoreState } from '../types';
 import { 
   User, 
@@ -16,7 +16,9 @@ import {
   LogOut,
   Users,
   Trophy,
-  Crown
+  Crown,
+  ShieldCheck,
+  Edit3
 } from 'lucide-react';
 import { soundManager } from '../utils/sound';
 
@@ -28,7 +30,7 @@ interface SidebarProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onResetAll: () => void;
-  onLogout: () => void;
+  onUpdateStudentInfo?: (info: Partial<StudentInfo>) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,8 +41,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMuted,
   onToggleMute,
   onResetAll,
-  onLogout,
+  onUpdateStudentInfo,
 }) => {
+  const [showEditNameModal, setShowEditNameModal] = useState<boolean>(false);
+  const [editFullName, setEditFullName] = useState<string>(student?.fullName || 'Học viên');
+  const [editSchool, setEditSchool] = useState<string>(student?.schoolOrOrg || 'Đơn vị giáo dục');
+
   const totalScore = 
     scoreState.game1.score + 
     scoreState.game2.score + 
@@ -51,17 +57,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     {
-      id: 'student_entry' as ActiveView,
-      title: 'Hồ Sơ Học Viên',
-      subtitle: student ? student.fullName : 'Chưa nhập thông tin',
-      icon: <User className="w-4 h-4" />,
-      badge: student ? '✓ Đã lưu' : 'Cần nhập',
-      badgeColor: student ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-    },
-    {
       id: 'game1_mcq' as ActiveView,
       title: 'Trò 1: Trắc Nghiệm 4 Đáp Án',
-      subtitle: 'Tình huống phân tích nâng cao',
+      subtitle: 'Tình huống sư phạm & phân hóa',
       icon: <CheckSquare className="w-4 h-4" />,
       points: `${scoreState.game1.score} / 25 đ`,
       isDone: scoreState.game1.isCompleted
@@ -115,12 +113,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-amber-100 text-amber-900 border border-amber-200'
     },
     {
+      id: 'admin_panel' as ActiveView,
+      title: 'Quản Trị Viên (Admin)',
+      subtitle: 'Sửa điểm, xóa data, GitHub sync',
+      icon: <ShieldCheck className="w-4 h-4 text-rose-500" />,
+      badge: 'Admin 🔒',
+      badgeColor: 'bg-rose-100 text-rose-800 font-black'
+    },
+    {
       id: 'handbook' as ActiveView,
       title: 'Cẩm Nang Khảo Thí AI',
       subtitle: 'Tra cứu chuẩn GDPT & UNESCO',
       icon: <BookOpen className="w-4 h-4" />
     }
   ];
+
+  const handleSaveName = (e: React.FormEvent) => {
+    e.preventDefault();
+    soundManager.playClick();
+    if (onUpdateStudentInfo && editFullName.trim()) {
+      onUpdateStudentInfo({
+        fullName: editFullName.trim(),
+        schoolOrOrg: editSchool.trim() || 'Đơn vị giáo dục',
+      });
+    }
+    setShowEditNameModal(false);
+  };
 
   return (
     <aside id="app-vertical-sidebar" className="w-full lg:w-72 bg-white border-r border-slate-200 flex flex-col justify-between p-4 shrink-0 shadow-sm">
@@ -140,37 +158,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Student Mini Badge */}
-        {student ? (
-          <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="text-2xl shrink-0">{student.avatar || '👨‍🏫'}</div>
-              <div className="overflow-hidden">
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {student.fullName}
-                </div>
-                <div className="text-[11px] text-slate-500 truncate">
-                  {student.schoolOrOrg || 'Đơn vị giáo dục'} &bull; {student.studentId}
-                </div>
+        {/* Student Quick Name Badge (Click to edit without login barrier) */}
+        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="text-2xl shrink-0">{student?.avatar || '👨‍🏫'}</div>
+            <div className="overflow-hidden">
+              <div className="text-xs font-black text-slate-900 truncate">
+                {student?.fullName || 'Học viên'}
+              </div>
+              <div className="text-[11px] text-slate-500 truncate">
+                {student?.schoolOrOrg || 'Đơn vị giáo dục'} &bull; {student?.studentId}
               </div>
             </div>
-            <button
-              onClick={onLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white transition-colors"
-              title="Đăng xuất / Đổi học viên"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
           </div>
-        ) : (
           <button
-            onClick={() => onSelectView('student_entry')}
-            className="w-full p-2.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 text-indigo-700 text-xs font-bold hover:bg-indigo-50 transition-colors text-left flex items-center gap-2"
+            onClick={() => {
+              setEditFullName(student?.fullName || '');
+              setEditSchool(student?.schoolOrOrg || '');
+              setShowEditNameModal(true);
+            }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white transition-colors cursor-pointer"
+            title="Bấm để sửa tên & đơn vị của bạn"
           >
-            <User className="w-4 h-4 text-indigo-600" />
-            <span>👉 Bấm để ghi danh Họ Tên</span>
+            <Edit3 className="w-3.5 h-3.5" />
           </button>
-        )}
+        </div>
 
         {/* Total Score Summary Bar */}
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
@@ -210,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   soundManager.playClick();
                   onSelectView(item.id);
                 }}
-                className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+                className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                   isActive
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200 font-semibold'
                     : item.highlight
@@ -256,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Controls: Sound, Reset & Logout */}
+      {/* Bottom Controls: Sound & Reset */}
       <div className="pt-3 mt-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
         <button
           id="btn-sidebar-toggle-sound"
@@ -264,7 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onToggleMute();
             soundManager.playClick();
           }}
-          className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-slate-100 font-medium transition-colors"
+          className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-slate-100 font-medium transition-colors cursor-pointer"
           title={isMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
         >
           {isMuted ? (
@@ -278,17 +290,77 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           id="btn-sidebar-reset"
           onClick={() => {
-            if (window.confirm('Bạn có chắc muốn bắt đầu lại toàn bộ bài thi không?')) {
+            if (window.confirm('Bạn có chắc muốn làm lại từ đầu các trò chơi không?')) {
               onResetAll();
             }
           }}
-          className="flex items-center gap-1 p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-medium transition-colors"
+          className="flex items-center gap-1 p-2 rounded-lg hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-medium transition-colors cursor-pointer"
           title="Làm lại từ đầu"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>Làm lại</span>
+          <span>Làm lại bài</span>
         </button>
       </div>
+
+      {/* Quick Edit Name Modal */}
+      {showEditNameModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-black text-slate-900">
+                Cập Nhật Họ Tên & Đơn Vị Của Bạn
+              </h3>
+              <button
+                onClick={() => setShowEditNameModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveName} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Họ và Tên:</label>
+                <input
+                  type="text"
+                  value={editFullName}
+                  onChange={(e) => setEditFullName(e.target.value)}
+                  placeholder="Nhập họ và tên..."
+                  required
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Trường học / Đơn vị:</label>
+                <input
+                  type="text"
+                  value={editSchool}
+                  onChange={(e) => setEditSchool(e.target.value)}
+                  placeholder="Ví dụ: THPT Chuyên, ĐH Sư Phạm..."
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditNameModal(false)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-md shadow-indigo-200"
+                >
+                  Lưu Thông Tin
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

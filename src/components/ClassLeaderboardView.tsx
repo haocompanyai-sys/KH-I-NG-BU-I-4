@@ -37,10 +37,12 @@ import { soundManager } from '../utils/sound';
 interface ClassLeaderboardViewProps {
   currentStudent: StudentInfo | null;
   onNavigateToStudent?: (student: StudentSubmission) => void;
+  onNavigate?: (view: any) => void;
 }
 
 export const ClassLeaderboardView: React.FC<ClassLeaderboardViewProps> = ({
   currentStudent,
+  onNavigate,
 }) => {
   const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
   const [stats, setStats] = useState<LeaderboardStats | null>(null);
@@ -290,6 +292,17 @@ export const ClassLeaderboardView: React.FC<ClassLeaderboardViewProps> = ({
               <FileSpreadsheet className="w-4 h-4" />
               <span>Xuất Excel</span>
             </button>
+
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate('admin_panel')}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                title="Mở Bảng Điều Khiển Quản Trị Viên (Xóa data, sửa điểm, GitHub sync)"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Quản Trị Admin</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

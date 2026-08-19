@@ -7,6 +7,7 @@ export type ActiveView =
   | 'results_evaluation'
   | 'my_ranking'
   | 'class_leaderboard'
+  | 'admin_panel'
   | 'handbook';
 
 export interface StudentInfo {

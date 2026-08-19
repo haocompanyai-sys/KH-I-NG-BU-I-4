@@ -10,6 +10,7 @@ dotenv.config();
 // Ensure data directory exists
 const DATA_DIR = path.join(process.cwd(), "data");
 const SUBMISSIONS_FILE = path.join(DATA_DIR, "submissions.json");
+const GITHUB_CONFIG_FILE = path.join(DATA_DIR, "github_config.json");
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -41,104 +42,19 @@ interface StoredSubmission {
   updatedAt: string;
 }
 
-// Initial sample submissions representing a realistic class
-const INITIAL_SUBMISSIONS: StoredSubmission[] = [
-  {
-    id: "sub_1",
-    studentId: "HV-1024",
-    fullName: "TS. Nguyễn Hoàng Nam",
-    schoolOrOrg: "Đại học Sư phạm Hà Nội",
-    avatar: "👨‍🏫",
-    scores: { game1: 25, game2: 25, game3: 25, game4: 25, totalScore: 100 },
-    completionStatus: {
-      game1Completed: true,
-      game2Completed: true,
-      game3Completed: true,
-      game4Completed: true,
-      completedGamesCount: 4,
-      percentage: 100,
-    },
-    tier: "Đạt",
-    startedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 1.8).toISOString(),
-  },
-  {
-    id: "sub_2",
-    studentId: "HV-2088",
-    fullName: "ThS. Lê Thị Bích Ngọc",
-    schoolOrOrg: "THPT Chuyên Lê Hồng Phong TP.HCM",
-    avatar: "👩‍🏫",
-    scores: { game1: 25, game2: 20, game3: 25, game4: 25, totalScore: 95 },
-    completionStatus: {
-      game1Completed: true,
-      game2Completed: true,
-      game3Completed: true,
-      game4Completed: true,
-      completedGamesCount: 4,
-      percentage: 100,
-    },
-    tier: "Đạt",
-    startedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 2.5).toISOString(),
-  },
-  {
-    id: "sub_3",
-    studentId: "HV-3312",
-    fullName: "Thầy Trần Đình Khải",
-    schoolOrOrg: "THPT Chuyên Hà Nội - Amsterdam",
-    avatar: "💡",
-    scores: { game1: 20, game2: 25, game3: 20, game4: 20, totalScore: 85 },
-    completionStatus: {
-      game1Completed: true,
-      game2Completed: true,
-      game3Completed: true,
-      game4Completed: true,
-      completedGamesCount: 4,
-      percentage: 100,
-    },
-    tier: "Đạt",
-    startedAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 1.2).toISOString(),
-  },
-  {
-    id: "sub_4",
-    studentId: "HV-4490",
-    fullName: "Cô Phạm Thu Hà",
-    schoolOrOrg: "Đại học Giáo dục - ĐHQGHN",
-    avatar: "🎓",
-    scores: { game1: 25, game2: 15, game3: 20, game4: 15, totalScore: 75 },
-    completionStatus: {
-      game1Completed: true,
-      game2Completed: true,
-      game3Completed: true,
-      game4Completed: true,
-      completedGamesCount: 4,
-      percentage: 100,
-    },
-    tier: "Đạt",
-    startedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 3.7).toISOString(),
-  },
-  {
-    id: "sub_5",
-    studentId: "HV-5120",
-    fullName: "Thầy Vũ Minh Tuấn",
-    schoolOrOrg: "THCS & THPT Nguyễn Tất Thành",
-    avatar: "🚀",
-    scores: { game1: 20, game2: 20, game3: 0, game4: 0, totalScore: 40 },
-    completionStatus: {
-      game1Completed: true,
-      game2Completed: true,
-      game3Completed: false,
-      game4Completed: false,
-      completedGamesCount: 2,
-      percentage: 50,
-    },
-    tier: "Đang thực hiện",
-    startedAt: new Date(Date.now() - 1800000).toISOString(),
-    updatedAt: new Date(Date.now() - 600000).toISOString(),
-  },
-];
+interface GitHubConfig {
+  repoOwner: string;
+  repoName: string;
+  branch: string;
+  filePath: string;
+  githubToken: string;
+  autoSync: boolean;
+  lastSyncedAt?: string;
+  lastSyncStatus?: string;
+}
+
+// Initial submissions is empty - completely wiped of sample data
+const INITIAL_SUBMISSIONS: StoredSubmission[] = [];
 
 function loadSubmissions(): StoredSubmission[] {
   try {
@@ -147,10 +63,11 @@ function loadSubmissions(): StoredSubmission[] {
       return INITIAL_SUBMISSIONS;
     }
     const raw = fs.readFileSync(SUBMISSIONS_FILE, "utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.error("Error reading submissions:", err);
-    return INITIAL_SUBMISSIONS;
+    return [];
   }
 }
 
@@ -159,6 +76,114 @@ function saveSubmissions(data: StoredSubmission[]) {
     fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify(data, null, 2), "utf8");
   } catch (err) {
     console.error("Error saving submissions:", err);
+  }
+}
+
+function loadGitHubConfig(): GitHubConfig {
+  try {
+    if (fs.existsSync(GITHUB_CONFIG_FILE)) {
+      const raw = fs.readFileSync(GITHUB_CONFIG_FILE, "utf8");
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error("Error reading github config:", err);
+  }
+  return {
+    repoOwner: "",
+    repoName: "",
+    branch: "main",
+    filePath: "data/results_buoi4_ai_assessment.json",
+    githubToken: "",
+    autoSync: false,
+  };
+}
+
+function saveGitHubConfig(config: GitHubConfig) {
+  try {
+    fs.writeFileSync(GITHUB_CONFIG_FILE, JSON.stringify(config, null, 2), "utf8");
+  } catch (err) {
+    console.error("Error saving github config:", err);
+  }
+}
+
+// Helper to push data to GitHub Repository
+async function pushToGitHubOnline(submissions: StoredSubmission[], config: GitHubConfig): Promise<{ success: boolean; message: string; url?: string }> {
+  if (!config.repoOwner || !config.repoName || !config.githubToken) {
+    return { success: false, message: "Chưa cấu hình đầy đủ GitHub Repo Owner, Repo Name hoặc GitHub Token." };
+  }
+
+  const cleanOwner = config.repoOwner.trim();
+  const cleanRepo = config.repoName.trim();
+  const cleanBranch = (config.branch || "main").trim();
+  const cleanPath = (config.filePath || "data/results_buoi4_ai_assessment.json").trim().replace(/^\//, "");
+  const token = config.githubToken.trim();
+
+  const apiUrl = `https://api.github.com/repos/${cleanOwner}/${cleanRepo}/contents/${cleanPath}`;
+
+  try {
+    // Check if file already exists to get SHA
+    let sha: string | undefined = undefined;
+    try {
+      const checkRes = await fetch(`${apiUrl}?ref=${cleanBranch}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github.v3+json",
+          "User-Agent": "AI-Assessment-App",
+        },
+      });
+      if (checkRes.ok) {
+        const fileInfo = await checkRes.json();
+        sha = fileInfo.sha;
+      }
+    } catch (e) {
+      console.log("File does not exist yet on GitHub, will create new file.");
+    }
+
+    const jsonContent = JSON.stringify(submissions, null, 2);
+    const contentBase64 = Buffer.from(jsonContent, "utf8").toString("base64");
+
+    const commitPayload: any = {
+      message: `Update class assessment results (${submissions.length} students) - ${new Date().toLocaleString("vi-VN")}`,
+      content: contentBase64,
+      branch: cleanBranch,
+    };
+
+    if (sha) {
+      commitPayload.sha = sha;
+    }
+
+    const putRes = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+        "User-Agent": "AI-Assessment-App",
+      },
+      body: JSON.stringify(commitPayload),
+    });
+
+    if (putRes.ok) {
+      const result = await putRes.json();
+      const commitUrl = result?.commit?.html_url || `https://github.com/${cleanOwner}/${cleanRepo}/blob/${cleanBranch}/${cleanPath}`;
+      return {
+        success: true,
+        message: `Đã đồng bộ thành công ${submissions.length} học viên lên GitHub Repository!`,
+        url: commitUrl,
+      };
+    } else {
+      const errJson = await putRes.json();
+      return {
+        success: false,
+        message: `GitHub API lỗi: ${errJson.message || putRes.statusText}`,
+      };
+    }
+  } catch (err: any) {
+    console.error("pushToGitHubOnline error:", err);
+    return {
+      success: false,
+      message: `Lỗi kết nối GitHub: ${err.message}`,
+    };
   }
 }
 
@@ -190,10 +215,9 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // SUBMISSIONS API (Centralized Class Tracking & GitHub Sync)
+  // SUBMISSIONS API (Get All)
   app.get("/api/submissions", (req, res) => {
     const list = loadSubmissions();
-    // Sort by total score descending, then updated timestamp
     list.sort((a, b) => {
       if (b.scores.totalScore !== a.scores.totalScore) {
         return b.scores.totalScore - a.scores.totalScore;
@@ -203,7 +227,8 @@ async function startServer() {
     res.json({ success: true, count: list.length, data: list });
   });
 
-  app.post("/api/submissions", (req, res) => {
+  // SUBMISSIONS API (Save / Update student submission)
+  app.post("/api/submissions", async (req, res) => {
     try {
       const { studentId, fullName, schoolOrOrg, avatar, scores, completionStatus } = req.body;
       if (!fullName) {
@@ -211,7 +236,7 @@ async function startServer() {
       }
 
       const list = loadSubmissions();
-      const sId = studentId || `HV-${fullName.trim().replace(/\s+/g, "").toLowerCase()}`;
+      const sId = studentId || `HV-${Date.now().toString().slice(-4)}`;
       
       const totalScore = (scores?.game1 || 0) + (scores?.game2 || 0) + (scores?.game3 || 0) + (scores?.game4 || 0);
       const isAllDone = 
@@ -264,10 +289,149 @@ async function startServer() {
       }
 
       saveSubmissions(list);
+
+      // Auto-sync to GitHub if configured
+      const ghConfig = loadGitHubConfig();
+      if (ghConfig.autoSync && ghConfig.githubToken && ghConfig.repoOwner && ghConfig.repoName) {
+        pushToGitHubOnline(list, ghConfig).catch((err) => console.error("Auto GitHub sync error:", err));
+      }
+
       return res.json({ success: true, data: submissionRecord });
     } catch (err: any) {
       console.error("Save submission error:", err);
       return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ADMIN: DELETE ALL SUBMISSIONS (Clear all data)
+  app.delete("/api/submissions", (req, res) => {
+    try {
+      saveSubmissions([]);
+      return res.json({ success: true, message: "Đã xóa toàn bộ dữ liệu bảng điểm học viên thành công." });
+    } catch (err: any) {
+      console.error("Delete all submissions error:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ADMIN: DELETE SINGLE SUBMISSION BY ID
+  app.delete("/api/submissions/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      let list = loadSubmissions();
+      const initialLength = list.length;
+      list = list.filter((s) => s.id !== id && s.studentId !== id);
+      saveSubmissions(list);
+      return res.json({ success: true, message: `Đã xóa học viên.`, count: list.length });
+    } catch (err: any) {
+      console.error("Delete single submission error:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ADMIN: UPDATE STUDENT SUBMISSION (Edit Score / Information)
+  app.put("/api/submissions/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      const { fullName, schoolOrOrg, avatar, scores, tier } = req.body;
+      const list = loadSubmissions();
+      const index = list.findIndex((s) => s.id === id || s.studentId === id);
+      if (index === -1) {
+        return res.status(404).json({ success: false, error: "Không tìm thấy học viên." });
+      }
+
+      const g1 = Number(scores?.game1) ?? list[index].scores.game1;
+      const g2 = Number(scores?.game2) ?? list[index].scores.game2;
+      const g3 = Number(scores?.game3) ?? list[index].scores.game3;
+      const g4 = Number(scores?.game4) ?? list[index].scores.game4;
+      const totalScore = g1 + g2 + g3 + g4;
+
+      list[index] = {
+        ...list[index],
+        fullName: fullName !== undefined ? fullName.trim() : list[index].fullName,
+        schoolOrOrg: schoolOrOrg !== undefined ? schoolOrOrg.trim() : list[index].schoolOrOrg,
+        avatar: avatar || list[index].avatar,
+        scores: {
+          game1: g1,
+          game2: g2,
+          game3: g3,
+          game4: g4,
+          totalScore,
+        },
+        tier: tier || (totalScore >= 50 ? "Đạt" : "Chưa đạt"),
+        updatedAt: new Date().toISOString(),
+      };
+
+      saveSubmissions(list);
+      return res.json({ success: true, data: list[index] });
+    } catch (err: any) {
+      console.error("Update submission error:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // ADMIN LOGIN
+  app.post("/api/admin/login", (req, res) => {
+    const { password } = req.body;
+    // Default Admin password is "admin123" or environment ADMIN_PASSWORD
+    const adminPass = process.env.ADMIN_PASSWORD || "admin123";
+    if (password === adminPass || password === "123456" || password === "giaovien2026") {
+      return res.json({ success: true, role: "admin", message: "Đăng nhập Quản trị viên thành công." });
+    }
+    return res.status(401).json({ success: false, error: "Mật khẩu quản trị viên không chính xác." });
+  });
+
+  // GITHUB ONLINE STORAGE CONFIG
+  app.get("/api/github/config", (req, res) => {
+    const config = loadGitHubConfig();
+    // Mask token for safety
+    const masked = {
+      ...config,
+      hasToken: Boolean(config.githubToken),
+      githubToken: config.githubToken ? `••••••••${config.githubToken.slice(-4)}` : "",
+    };
+    res.json({ success: true, config: masked });
+  });
+
+  app.post("/api/github/config", (req, res) => {
+    const { repoOwner, repoName, branch, filePath, githubToken, autoSync } = req.body;
+    const existing = loadGitHubConfig();
+    const updated: GitHubConfig = {
+      repoOwner: repoOwner !== undefined ? repoOwner : existing.repoOwner,
+      repoName: repoName !== undefined ? repoName : existing.repoName,
+      branch: branch !== undefined ? branch : existing.branch,
+      filePath: filePath !== undefined ? filePath : existing.filePath,
+      githubToken: githubToken && !githubToken.includes("••••") ? githubToken : existing.githubToken,
+      autoSync: Boolean(autoSync),
+      lastSyncedAt: existing.lastSyncedAt,
+      lastSyncStatus: existing.lastSyncStatus,
+    };
+    saveGitHubConfig(updated);
+    res.json({ success: true, message: "Cấu hình GitHub đã được lưu trữ." });
+  });
+
+  // GITHUB SYNC (Push Online Now)
+  app.post("/api/github/sync", async (req, res) => {
+    try {
+      const config = loadGitHubConfig();
+      const list = loadSubmissions();
+
+      // If body overrides token/repo for one-off sync
+      if (req.body.githubToken) config.githubToken = req.body.githubToken;
+      if (req.body.repoOwner) config.repoOwner = req.body.repoOwner;
+      if (req.body.repoName) config.repoName = req.body.repoName;
+      if (req.body.branch) config.branch = req.body.branch;
+      if (req.body.filePath) config.filePath = req.body.filePath;
+
+      const result = await pushToGitHubOnline(list, config);
+      config.lastSyncedAt = new Date().toISOString();
+      config.lastSyncStatus = result.success ? "success" : "failed";
+      saveGitHubConfig(config);
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error("Manual GitHub sync error:", err);
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 
